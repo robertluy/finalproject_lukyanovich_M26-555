@@ -33,3 +33,6 @@ logs_dir = "logs"
 rates_ttl_seconds = 60
 default_base_currency = "USD"
 log_format = "text"
+
+[project.scripts]
+valutatrade = "valutatrade_hub.cli.interface:main"
