@@ -11,11 +11,15 @@ from valutatrade_hub.core.exceptions import (
 )
 from valutatrade_hub.core.usecases import TradingService
 from valutatrade_hub.logging_config import configure_logging
+from valutatrade_hub.parser_service.updater import RatesUpdater
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    """Подготовить команды и их аргументы."""
-    parser = argparse.ArgumentParser(prog="valutatrade")
+    """Настроить команды и аргументы интерфейса."""
+    parser = argparse.ArgumentParser(
+        prog="valutatrade",
+        description="ValutaTrade Hub",
+    )
     commands = parser.add_subparsers(dest="command", required=True)
 
     for name in ("register", "login"):
@@ -23,17 +27,40 @@ def _build_parser() -> argparse.ArgumentParser:
         command.add_argument("--username", required=True)
         command.add_argument("--password", required=True)
 
-    command = commands.add_parser("show-portfolio")
-    command.add_argument("--base")
+    portfolio = commands.add_parser("show-portfolio")
+    portfolio.add_argument("--base")
 
     for name in ("buy", "sell"):
         command = commands.add_parser(name)
         command.add_argument("--currency", required=True)
-        command.add_argument("--amount", required=True, type=float)
+        command.add_argument("--amount", type=float, required=True)
 
-    command = commands.add_parser("get-rate")
-    command.add_argument("--from", dest="from_currency", required=True)
-    command.add_argument("--to", dest="to_currency", required=True)
+    rate = commands.add_parser("get-rate")
+    rate.add_argument("--from", dest="from_currency", required=True)
+    rate.add_argument("--to", dest="to_currency", required=True)
+
+    update = commands.add_parser(
+        "update-rates",
+        help="Обновить курсы из внешних API",
+    )
+    update.add_argument(
+        "--source",
+        choices=("coingecko", "exchangerate"),
+        help="Обновить только выбранный источник",
+    )
+
+    rates = commands.add_parser(
+        "show-rates",
+        help="Показать курсы из локального кеша",
+    )
+    rates.add_argument("--currency", help="Показать только выбранную валюту")
+    rates.add_argument(
+        "--top",
+        type=int,
+        help="Показать N самых дорогих криптовалют",
+    )
+    rates.add_argument("--base", help="Базовая валюта для пересчёта")
+
     return parser
 
 
@@ -57,6 +84,25 @@ def _print_portfolio(report: dict):
     print(table)
     print(f"ИТОГО: {report['total_value']:,.2f} {base}")
 
+def _print_rates(data: dict) -> None:
+    """Вывести подготовленные курсы в виде таблицы."""
+    if not data["rates"]:
+        print("Подходящих курсов не найдено")
+        return
+
+    table = PrettyTable(["Пара", "Курс", "Обновлено", "Источник"])
+
+    for record in data["rates"]:
+        pair = f"{record['from_currency']}_{record['to_currency']}"
+        table.add_row([
+            pair,
+            f"{record['rate']:.8f}",
+            record["updated_at"] or "—",
+            record["source"],
+        ])
+
+    print(f"Курсы относительно {data['base_currency']}:")
+    print(table)
 
 def _execute_command(args: argparse.Namespace, service: TradingService):
     """Вызвать бизнес-логику выбранной команды."""
@@ -97,6 +143,22 @@ def _execute_command(args: argparse.Namespace, service: TradingService):
             if result["updated_at"] is not None:
                 print(f"Обновлено: {result['updated_at']}")
             print(f"Источник: {result['source']}")
+        case "update-rates":
+            result = RatesUpdater().run_update(args.source)
+
+            print(f"Обновлено валютных пар: {result['updated_pairs']}")
+            print(f"Источники: {', '.join(result['sources'])}")
+            print(f"Последнее обновление: {result['last_refresh']}")
+
+            for source, error in result["errors"].items():
+                print(f"Предупреждение — {source}: {error}")
+        case "show-rates":
+            result = service.show_rates(
+                currency=args.currency,
+                top=args.top,
+                base_currency=args.base,
+            )
+            _print_rates(result)
 
 
 def main():
