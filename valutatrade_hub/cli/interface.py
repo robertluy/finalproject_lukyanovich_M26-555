@@ -3,8 +3,14 @@ import shlex
 
 from prettytable import PrettyTable
 
-from valutatrade_hub.core.exceptions import InsufficientFundsError
+from valutatrade_hub.core.currencies import get_supported_codes
+from valutatrade_hub.core.exceptions import (
+    ApiRequestError,
+    CurrencyNotFoundError,
+    InsufficientFundsError,
+)
 from valutatrade_hub.core.usecases import TradingService
+from valutatrade_hub.logging_config import configure_logging
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -97,6 +103,7 @@ def main():
     """Запустить интерактивный командный интерфейс."""
     parser = _build_parser()
     try:
+        configure_logging()
         service = TradingService()
     except (ValueError, OSError) as error:
         print(f"Ошибка запуска: {error}")
@@ -128,5 +135,11 @@ def main():
         except (EOFError, KeyboardInterrupt):
             print("\nДо свидания!")
             break
+        except CurrencyNotFoundError as error:
+            print(f"Ошибка: {error}")
+            print("Поддерживаемые валюты: " + ", ".join(get_supported_codes()))
+        except ApiRequestError as error:
+            print(f"Ошибка: {error}")
+            print("Повторите попытку позже или проверьте подключение к сети.")
         except (ValueError, OSError, InsufficientFundsError) as error:
             print(f"Ошибка: {error}")

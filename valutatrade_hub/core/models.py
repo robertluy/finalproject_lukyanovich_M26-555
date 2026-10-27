@@ -3,11 +3,9 @@ import math
 import secrets
 from datetime import datetime, timezone
 
+from valutatrade_hub.core.currencies import get_currency
 from valutatrade_hub.core.exceptions import InsufficientFundsError
-from valutatrade_hub.core.utils import (
-    get_exchange_rate,
-    normalize_currency_code,
-)
+from valutatrade_hub.core.utils import get_exchange_rate
 
 MIN_PASSWORD_LENGTH = 4
 
@@ -124,9 +122,7 @@ class Wallet:
     """Кошелёк пользователя для одной валюты."""
 
     def __init__(self, currency_code: str, balance: float = 0.0):
-        if not isinstance(currency_code, str) or not currency_code.strip():
-            raise ValueError("Код валюты не может быть пустым")
-        self.currency_code = currency_code.strip().upper()
+        self.currency_code = get_currency(currency_code).code
         self.balance = balance
 
     @staticmethod
@@ -206,16 +202,15 @@ class Portfolio:
         return self._wallets.copy()
 
     def add_currency(self, currency_code: str) -> Wallet:
-        """Создать кошелёк при отсутствии и вернуть его."""
-        code = normalize_currency_code(currency_code)
-        get_exchange_rate(code)
+        """Создать кошелёк поддерживаемой валюты при отсутствии."""
+        code = get_currency(currency_code).code
         if code not in self._wallets:
             self._wallets[code] = Wallet(code)
         return self._wallets[code]
 
     def get_wallet(self, currency_code: str) -> Wallet:
-        """Получить кошелёк по коду валюты."""
-        code = normalize_currency_code(currency_code)
+        """Получить кошелёк поддерживаемой валюты."""
+        code = get_currency(currency_code).code
         if code not in self._wallets:
             raise ValueError(f"У вас нет кошелька '{code}'")
         return self._wallets[code]

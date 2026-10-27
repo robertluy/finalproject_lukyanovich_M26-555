@@ -1,8 +1,7 @@
+from valutatrade_hub.core.currencies import get_currency
 from valutatrade_hub.core.models import Portfolio, User
-from valutatrade_hub.core.utils import (
-    get_exchange_rate,
-    normalize_currency_code,
-)
+from valutatrade_hub.core.utils import get_exchange_rate
+from valutatrade_hub.decorators import log_action
 from valutatrade_hub.infra.database import DatabaseManager
 from valutatrade_hub.infra.settings import SettingsLoader
 
@@ -100,7 +99,7 @@ class TradingService:
         portfolio = self.get_portfolio()
         if base_currency is None:
             base_currency = self._settings.get("default_base_currency")
-        base_currency = normalize_currency_code(base_currency)
+        base_currency = get_currency(base_currency).code
         total_value = portfolio.get_total_value(base_currency)
 
         wallets = []
@@ -120,10 +119,12 @@ class TradingService:
             "total_value": total_value,
         }
 
+    @log_action("BUY", verbose=True)
     def buy(self, currency_code: str, amount: float) -> dict:
         """Купить валюту в рамках упрощённой модели."""
         return self._trade(currency_code, amount, is_buy=True)
 
+    @log_action("SELL", verbose=True)
     def sell(self, currency_code: str, amount: float) -> dict:
         """Продать валюту в рамках упрощённой модели."""
         return self._trade(currency_code, amount, is_buy=False)
@@ -131,7 +132,7 @@ class TradingService:
     def _trade(self, currency_code: str, amount: float, is_buy: bool) -> dict:
         """Выполнить операцию с кошельком и сохранить портфель."""
         portfolio = self.get_portfolio()
-        code = normalize_currency_code(currency_code)
+        code = get_currency(currency_code).code
         rate = get_exchange_rate(code)
 
         if is_buy:
@@ -159,8 +160,8 @@ class TradingService:
 
     def get_rate(self, from_currency: str, to_currency: str) -> dict:
         """Получить прямой и обратный учебные курсы."""
-        from_currency = normalize_currency_code(from_currency)
-        to_currency = normalize_currency_code(to_currency)
+        from_currency = get_currency(from_currency).code
+        to_currency = get_currency(to_currency).code
         return {
             "from_currency": from_currency,
             "to_currency": to_currency,
