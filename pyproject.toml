@@ -33,6 +33,9 @@ logs_dir = "logs"
 rates_ttl_seconds = 60
 default_base_currency = "USD"
 log_format = "text"
+log_level = "INFO"
+log_max_bytes = 1000000
+log_backup_count = 3
 
 [project.scripts]
 valutatrade = "valutatrade_hub.cli.interface:main"
