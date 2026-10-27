@@ -1,6 +1,7 @@
-from valutatrade_hub.core.currencies import get_currency
+from valutatrade_hub.core.currencies import CryptoCurrency, get_currency
+from valutatrade_hub.core.exceptions import ApiRequestError
 from valutatrade_hub.core.models import Portfolio, User
-from valutatrade_hub.core.utils import get_exchange_rate
+from valutatrade_hub.core.utils import get_exchange_rate, get_rate_info
 from valutatrade_hub.decorators import log_action
 from valutatrade_hub.infra.database import DatabaseManager
 from valutatrade_hub.infra.settings import SettingsLoader
@@ -159,14 +160,54 @@ class TradingService:
         }
 
     def get_rate(self, from_currency: str, to_currency: str) -> dict:
-        """Получить прямой и обратный учебные курсы."""
-        from_currency = get_currency(from_currency).code
-        to_currency = get_currency(to_currency).code
-        return {
-            "from_currency": from_currency,
-            "to_currency": to_currency,
-            "rate": get_exchange_rate(from_currency, to_currency),
-            "reverse_rate": get_exchange_rate(to_currency, from_currency),
-            "updated_at": None,
-            "source": "учебные фиксированные курсы",
-        }
+        """Получить актуальный курс и сведения о его источнике."""
+        return get_rate_info(from_currency, to_currency)
+
+    def show_rates(
+        self,
+        currency: str | None = None,
+        top: int | None = None,
+        base_currency: str | None = None,
+    ) -> dict:
+        """Подготовить актуальные курсы из кеша с фильтрацией и пересчётом."""
+        if top is not None and (
+            isinstance(top, bool) or not isinstance(top, int) or top <= 0
+        ):
+            raise ValueError("Параметр --top должен быть целым числом больше нуля")
+
+        if base_currency is None:
+            base_currency = self._settings.get("default_base_currency", "USD")
+        base_currency = get_currency(base_currency).code
+
+        pairs = DatabaseManager().read("rates").get("pairs", {})
+        if not isinstance(pairs, dict):
+            raise ValueError("В кеше курсов отсутствует словарь pairs")
+        if not pairs:
+            raise ApiRequestError(
+                "Локальный кеш курсов пуст. Выполните update-rates"
+            )
+
+        codes = {code for pair in pairs for code in pair.split("_")}
+        codes.discard(base_currency)
+
+        if currency is not None:
+            currency = get_currency(currency).code
+            if currency not in codes and currency != base_currency:
+                raise ApiRequestError(
+                    f"Курс для '{currency}' не найден в кеше. "
+                    "Выполните update-rates"
+                )
+            codes = {currency}
+
+        if top is not None:
+            codes = {
+                code for code in codes
+                if isinstance(get_currency(code), CryptoCurrency)
+            }
+
+        rates = [get_rate_info(code, base_currency) for code in sorted(codes)]
+        if top is not None:
+            rates.sort(key=lambda item: item["rate"], reverse=True)
+            rates = rates[:top]
+
+        return {"base_currency": base_currency, "rates": rates}
